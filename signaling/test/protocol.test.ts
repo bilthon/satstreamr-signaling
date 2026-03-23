@@ -154,6 +154,7 @@ describe('offer / answer relay', () => {
     const viewer = await connect();
     send(viewer, { type: 'join_session', sessionId });
     await nextMessage(tutor); // viewer_joined
+    await nextMessage(viewer); // session_created (tutorPubkey handshake)
 
     const sdp = { type: 'offer', sdp: 'v=0\r\n...' };
     send(tutor, { type: 'offer', sessionId, sdp });
@@ -198,6 +199,7 @@ describe('ice_candidate relay', () => {
     const viewer = await connect();
     send(viewer, { type: 'join_session', sessionId });
     await nextMessage(tutor); // viewer_joined
+    await nextMessage(viewer); // session_created (tutorPubkey handshake)
 
     const candidate = { candidate: 'candidate:1 1 UDP ...', sdpMid: '0', sdpMLineIndex: 0 };
     send(tutor, { type: 'ice_candidate', sessionId, candidate });
@@ -221,6 +223,7 @@ describe('end_session', () => {
     const viewer = await connect();
     send(viewer, { type: 'join_session', sessionId });
     await nextMessage(tutor); // viewer_joined
+    await nextMessage(viewer); // session_created (tutorPubkey handshake)
 
     // Both peers listen for session_ended
     const tutorEndPromise = nextMessage(tutor);
@@ -266,38 +269,18 @@ describe('reconnect grace period', () => {
 
     // Viewer reconnects with rejoin_session
     const viewerNew = await connect();
-
-    // Collect messages with buffering to avoid race condition between session_rejoined
-    // and immediately-flushed buffered messages arriving in the same event loop tick.
-    const received: Record<string, unknown>[] = [];
-    const receiveN = (n: number): Promise<Record<string, unknown>[]> =>
-      new Promise((resolve, reject) => {
-        const timer = setTimeout(
-          () => reject(new Error(`Timeout: received only ${received.length}/${n} messages`)),
-          5000,
-        );
-        viewerNew.on('message', (data: Buffer) => {
-          received.push(JSON.parse(data.toString()) as Record<string, unknown>);
-          if (received.length >= n) {
-            clearTimeout(timer);
-            viewerNew.removeAllListeners('message');
-            resolve(received);
-          }
-        });
-      });
-
-    const msgCollector = receiveN(2);
     send(viewerNew, { type: 'rejoin_session', sessionId });
-    const msgs = await msgCollector;
 
     // First message should be session_rejoined confirmation
-    expect(msgs[0]?.type).toBe('session_rejoined');
-    expect(msgs[0]?.sessionId).toBe(sessionId);
-    expect(msgs[0]?.bufferedCount).toBe(1);
+    const rejoinedMsg = await nextMessage(viewerNew);
+    expect(rejoinedMsg.type).toBe('session_rejoined');
+    expect(rejoinedMsg.sessionId).toBe(sessionId);
+    expect(rejoinedMsg.bufferedCount).toBe(1);
 
-    // Second message should be the buffered offer
-    expect(msgs[1]?.type).toBe('offer');
-    expect(msgs[1]?.sdp).toEqual(sdp);
+    // Then receive the buffered offer
+    const bufferedMsg = await nextMessage(viewerNew);
+    expect(bufferedMsg.type).toBe('offer');
+    expect(bufferedMsg.sdp).toEqual(sdp);
 
     tutor.close();
     viewerNew.close();
