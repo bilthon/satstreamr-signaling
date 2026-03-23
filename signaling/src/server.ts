@@ -292,9 +292,6 @@ wss.on('connection', (ws: WebSocket) => {
           const buffered = session.peerBuffers.get(rejoiningOldPeerId) ?? [];
           session.peerBuffers.delete(rejoiningOldPeerId);
 
-          // Confirm session rejoin before flushing buffered messages
-          sendTo(ws, { type: 'session_rejoined', sessionId: sid, bufferedCount: buffered.length }, peerId, sid);
-
           for (const msg of buffered) {
             sendTo(ws, msg, peerId, sid);
           }

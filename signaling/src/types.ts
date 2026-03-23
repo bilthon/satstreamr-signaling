@@ -14,7 +14,6 @@ export type InboundMessageType =
 // Outbound message types (server -> client)
 export type OutboundMessageType =
   | 'session_created'
-  | 'session_rejoined'
   | 'viewer_joined'
   | 'session_ended'
   | 'pong'
@@ -89,12 +88,6 @@ export interface ViewerJoinedMessage {
   tutorPubkey: string;
 }
 
-export interface SessionRejoinedMessage {
-  type: 'session_rejoined';
-  sessionId: string;
-  bufferedCount: number;
-}
-
 export interface SessionEndedMessage {
   type: 'session_ended';
 }
@@ -129,7 +122,6 @@ export interface RelayIceCandidateMessage {
 
 export type OutboundMessage =
   | SessionCreatedMessage
-  | SessionRejoinedMessage
   | ViewerJoinedMessage
   | SessionEndedMessage
   | PongMessage
