@@ -154,6 +154,7 @@ describe('offer / answer relay', () => {
     const viewer = await connect();
     send(viewer, { type: 'join_session', sessionId });
     await nextMessage(tutor); // viewer_joined
+    await nextMessage(viewer); // session_created (tutorPubkey handshake)
 
     const sdp = { type: 'offer', sdp: 'v=0\r\n...' };
     send(tutor, { type: 'offer', sessionId, sdp });
@@ -198,6 +199,7 @@ describe('ice_candidate relay', () => {
     const viewer = await connect();
     send(viewer, { type: 'join_session', sessionId });
     await nextMessage(tutor); // viewer_joined
+    await nextMessage(viewer); // session_created (tutorPubkey handshake)
 
     const candidate = { candidate: 'candidate:1 1 UDP ...', sdpMid: '0', sdpMLineIndex: 0 };
     send(tutor, { type: 'ice_candidate', sessionId, candidate });
@@ -221,6 +223,7 @@ describe('end_session', () => {
     const viewer = await connect();
     send(viewer, { type: 'join_session', sessionId });
     await nextMessage(tutor); // viewer_joined
+    await nextMessage(viewer); // session_created (tutorPubkey handshake)
 
     // Both peers listen for session_ended
     const tutorEndPromise = nextMessage(tutor);
@@ -268,7 +271,13 @@ describe('reconnect grace period', () => {
     const viewerNew = await connect();
     send(viewerNew, { type: 'rejoin_session', sessionId });
 
-    // Should receive the buffered offer
+    // First message should be session_rejoined confirmation
+    const rejoinedMsg = await nextMessage(viewerNew);
+    expect(rejoinedMsg.type).toBe('session_rejoined');
+    expect(rejoinedMsg.sessionId).toBe(sessionId);
+    expect(rejoinedMsg.bufferedCount).toBe(1);
+
+    // Then receive the buffered offer
     const bufferedMsg = await nextMessage(viewerNew);
     expect(bufferedMsg.type).toBe('offer');
     expect(bufferedMsg.sdp).toEqual(sdp);

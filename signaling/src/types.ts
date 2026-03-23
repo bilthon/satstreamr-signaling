@@ -16,6 +16,7 @@ export type OutboundMessageType =
   | 'session_created'
   | 'viewer_joined'
   | 'session_ended'
+  | 'session_rejoined'
   | 'pong'
   | 'error'
   | 'offer'
@@ -92,6 +93,12 @@ export interface SessionEndedMessage {
   type: 'session_ended';
 }
 
+export interface SessionRejoinedMessage {
+  type: 'session_rejoined';
+  sessionId: string;
+  bufferedCount: number;
+}
+
 export interface PongMessage {
   type: 'pong';
 }
@@ -124,6 +131,7 @@ export type OutboundMessage =
   | SessionCreatedMessage
   | ViewerJoinedMessage
   | SessionEndedMessage
+  | SessionRejoinedMessage
   | PongMessage
   | ErrorMessage
   | RelayOfferMessage
