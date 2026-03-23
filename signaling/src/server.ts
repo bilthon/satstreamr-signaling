@@ -132,18 +132,20 @@ wss.on('connection', (ws: WebSocket) => {
 
       case 'create_session': {
         const newSessionId = uuidv4();
+        const tutorPubkey = message.tutorPubkey ?? '';
         const session: SessionRecord = {
           peers: new Map([[peerId, ws]]),
           disconnectedPeers: new Set(),
           buffer: [],
           peerBuffers: new Map(),
           tutorPeerId: peerId,
+          tutorPubkey,
           graceTimers: new Map(),
           peerRoles: new Map([[peerId, 'tutor']]),
         };
         sessions.set(newSessionId, session);
         peerSession.set(peerId, newSessionId);
-        sendTo(ws, { type: 'session_created', sessionId: newSessionId }, peerId, newSessionId);
+        sendTo(ws, { type: 'session_created', sessionId: newSessionId, tutorPubkey }, peerId, newSessionId);
         break;
       }
 
@@ -162,11 +164,14 @@ wss.on('connection', (ws: WebSocket) => {
         session.peerRoles.set(peerId, 'viewer');
         peerSession.set(peerId, sid);
 
-        // Notify tutor about new viewer
+        // Notify tutor about new viewer; include tutorPubkey for viewer
         const tutorId = session.tutorPeerId;
+        const sessionTutorPubkey = session.tutorPubkey ?? '';
         if (tutorId) {
-          deliverToPeer(session, tutorId, { type: 'viewer_joined', viewerId: peerId }, sid);
+          deliverToPeer(session, tutorId, { type: 'viewer_joined', viewerId: peerId, tutorPubkey: sessionTutorPubkey }, sid);
         }
+        // Send viewer a session_created message so it learns the tutorPubkey
+        sendTo(ws, { type: 'session_created', sessionId: sid, tutorPubkey: sessionTutorPubkey }, peerId, sid);
         break;
       }
 
