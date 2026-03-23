@@ -266,12 +266,38 @@ describe('reconnect grace period', () => {
 
     // Viewer reconnects with rejoin_session
     const viewerNew = await connect();
-    send(viewerNew, { type: 'rejoin_session', sessionId });
 
-    // Should receive the buffered offer
-    const bufferedMsg = await nextMessage(viewerNew);
-    expect(bufferedMsg.type).toBe('offer');
-    expect(bufferedMsg.sdp).toEqual(sdp);
+    // Collect messages with buffering to avoid race condition between session_rejoined
+    // and immediately-flushed buffered messages arriving in the same event loop tick.
+    const received: Record<string, unknown>[] = [];
+    const receiveN = (n: number): Promise<Record<string, unknown>[]> =>
+      new Promise((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error(`Timeout: received only ${received.length}/${n} messages`)),
+          5000,
+        );
+        viewerNew.on('message', (data: Buffer) => {
+          received.push(JSON.parse(data.toString()) as Record<string, unknown>);
+          if (received.length >= n) {
+            clearTimeout(timer);
+            viewerNew.removeAllListeners('message');
+            resolve(received);
+          }
+        });
+      });
+
+    const msgCollector = receiveN(2);
+    send(viewerNew, { type: 'rejoin_session', sessionId });
+    const msgs = await msgCollector;
+
+    // First message should be session_rejoined confirmation
+    expect(msgs[0]?.type).toBe('session_rejoined');
+    expect(msgs[0]?.sessionId).toBe(sessionId);
+    expect(msgs[0]?.bufferedCount).toBe(1);
+
+    // Second message should be the buffered offer
+    expect(msgs[1]?.type).toBe('offer');
+    expect(msgs[1]?.sdp).toEqual(sdp);
 
     tutor.close();
     viewerNew.close();
