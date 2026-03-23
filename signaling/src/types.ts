@@ -25,6 +25,7 @@ export type OutboundMessageType =
 // Inbound messages
 export interface CreateSessionMessage {
   type: 'create_session';
+  tutorPubkey?: string;
 }
 
 export interface JoinSessionMessage {
@@ -78,11 +79,13 @@ export type InboundMessage =
 export interface SessionCreatedMessage {
   type: 'session_created';
   sessionId: string;
+  tutorPubkey: string;
 }
 
 export interface ViewerJoinedMessage {
   type: 'viewer_joined';
   viewerId: string;
+  tutorPubkey: string;
 }
 
 export interface SessionEndedMessage {
@@ -140,6 +143,8 @@ export interface SessionRecord {
   expiresAt?: number;
   // Track which peerId is the tutor (session creator)
   tutorPeerId?: string;
+  // Tutor public key for P2PK token locking (Unit 10)
+  tutorPubkey?: string;
   // Track grace period timers keyed by peerId
   graceTimers: Map<string, ReturnType<typeof setTimeout>>;
   // Peer roles: map peerId -> 'tutor' | 'viewer'
