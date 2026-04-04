@@ -155,6 +155,8 @@ wss.on('connection', (ws: WebSocket) => {
         const newSessionId = uuidv4();
         const tutorPubkey = message.tutorPubkey ?? '';
         const mintUrl = message.mintUrl ?? '';
+        const rateSatsPerInterval = message.rateSatsPerInterval ?? 2;
+        const intervalSeconds = message.intervalSeconds ?? 10;
         const session: SessionRecord = {
           peers: new Map([[peerId, ws]]),
           disconnectedPeers: new Set(),
@@ -163,6 +165,8 @@ wss.on('connection', (ws: WebSocket) => {
           tutorPeerId: peerId,
           tutorPubkey,
           mintUrl,
+          rateSatsPerInterval,
+          intervalSeconds,
           graceTimers: new Map(),
           peerRoles: new Map([[peerId, 'tutor']]),
         };
@@ -174,6 +178,8 @@ wss.on('connection', (ws: WebSocket) => {
           tutorPubkey,
           iceServers: buildIceServers(peerId),
           ...(mintUrl ? { mintUrl } : {}),
+          rateSatsPerInterval,
+          intervalSeconds,
         };
         sendTo(ws, tutorCreatedMsg, peerId, newSessionId);
         break;
@@ -210,13 +216,15 @@ wss.on('connection', (ws: WebSocket) => {
             sid,
           );
         }
-        // Send viewer a session_created message so it learns the tutorPubkey, iceServers, and mintUrl
+        // Send viewer a session_created message so it learns the tutorPubkey, iceServers, mintUrl, and rate fields
         const viewerCreatedMsg: SessionCreatedMessage = {
           type: 'session_created',
           sessionId: sid,
           tutorPubkey: sessionTutorPubkey,
           iceServers: buildIceServers(peerId),
           ...(session.mintUrl ? { mintUrl: session.mintUrl } : {}),
+          rateSatsPerInterval: session.rateSatsPerInterval ?? 2,
+          intervalSeconds: session.intervalSeconds ?? 10,
         };
         sendTo(ws, viewerCreatedMsg, peerId, sid);
         break;
