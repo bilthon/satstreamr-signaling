@@ -3,13 +3,14 @@ import { v4 as uuidv4 } from 'uuid';
 import {
   InboundMessage,
   OutboundMessage,
+  SessionCreatedMessage,
   SessionRecord,
   LogEntry,
   IceServer,
 } from './types';
 import { generateTurnCredentials } from './turn-credentials';
 
-const PORT = 8080;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 8080;
 const GRACE_PERIOD_MS = 30_000;
 
 const TURN_SHARED_SECRET = process.env.TURN_SHARED_SECRET ?? '';
@@ -153,6 +154,7 @@ wss.on('connection', (ws: WebSocket) => {
       case 'create_session': {
         const newSessionId = uuidv4();
         const tutorPubkey = message.tutorPubkey ?? '';
+        const mintUrl = message.mintUrl ?? '';
         const session: SessionRecord = {
           peers: new Map([[peerId, ws]]),
           disconnectedPeers: new Set(),
@@ -160,22 +162,20 @@ wss.on('connection', (ws: WebSocket) => {
           peerBuffers: new Map(),
           tutorPeerId: peerId,
           tutorPubkey,
+          mintUrl,
           graceTimers: new Map(),
           peerRoles: new Map([[peerId, 'tutor']]),
         };
         sessions.set(newSessionId, session);
         peerSession.set(peerId, newSessionId);
-        sendTo(
-          ws,
-          {
-            type: 'session_created',
-            sessionId: newSessionId,
-            tutorPubkey,
-            iceServers: buildIceServers(peerId),
-          },
-          peerId,
-          newSessionId,
-        );
+        const tutorCreatedMsg: SessionCreatedMessage = {
+          type: 'session_created',
+          sessionId: newSessionId,
+          tutorPubkey,
+          iceServers: buildIceServers(peerId),
+          ...(mintUrl ? { mintUrl } : {}),
+        };
+        sendTo(ws, tutorCreatedMsg, peerId, newSessionId);
         break;
       }
 
@@ -210,18 +210,15 @@ wss.on('connection', (ws: WebSocket) => {
             sid,
           );
         }
-        // Send viewer a session_created message so it learns the tutorPubkey and iceServers
-        sendTo(
-          ws,
-          {
-            type: 'session_created',
-            sessionId: sid,
-            tutorPubkey: sessionTutorPubkey,
-            iceServers: buildIceServers(peerId),
-          },
-          peerId,
-          sid,
-        );
+        // Send viewer a session_created message so it learns the tutorPubkey, iceServers, and mintUrl
+        const viewerCreatedMsg: SessionCreatedMessage = {
+          type: 'session_created',
+          sessionId: sid,
+          tutorPubkey: sessionTutorPubkey,
+          iceServers: buildIceServers(peerId),
+          ...(session.mintUrl ? { mintUrl: session.mintUrl } : {}),
+        };
+        sendTo(ws, viewerCreatedMsg, peerId, sid);
         break;
       }
 
