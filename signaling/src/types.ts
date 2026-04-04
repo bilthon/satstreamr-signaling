@@ -27,6 +27,8 @@ export type OutboundMessageType =
 export interface CreateSessionMessage {
   type: 'create_session';
   tutorPubkey?: string;
+  /** Cashu mint URL — relayed verbatim to both tutor and viewer in session_created. */
+  mintUrl?: string;
 }
 
 export interface JoinSessionMessage {
@@ -89,6 +91,8 @@ export interface SessionCreatedMessage {
   sessionId: string;
   tutorPubkey: string;
   iceServers?: IceServer[];
+  /** Echoed from create_session.mintUrl — forwarded to both tutor and viewer. */
+  mintUrl?: string;
 }
 
 export interface ViewerJoinedMessage {
@@ -162,6 +166,8 @@ export interface SessionRecord {
   tutorPeerId?: string;
   // Tutor public key for P2PK token locking (Unit 10)
   tutorPubkey?: string;
+  // Cashu mint URL relayed to viewers (set from create_session.mintUrl)
+  mintUrl?: string;
   // Track grace period timers keyed by peerId
   graceTimers: Map<string, ReturnType<typeof setTimeout>>;
   // Peer roles: map peerId -> 'tutor' | 'viewer'
