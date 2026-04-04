@@ -5,10 +5,30 @@ import {
   OutboundMessage,
   SessionRecord,
   LogEntry,
+  IceServer,
 } from './types';
+import { generateTurnCredentials } from './turn-credentials';
 
 const PORT = 8080;
 const GRACE_PERIOD_MS = 30_000;
+
+const TURN_SHARED_SECRET = process.env.TURN_SHARED_SECRET ?? '';
+const TURN_HOST = process.env.TURN_HOST ?? 'localhost';
+
+function buildIceServers(userId: string): IceServer[] {
+  const servers: IceServer[] = [
+    { urls: 'stun:stun.l.google.com:19302' },
+  ];
+  if (TURN_SHARED_SECRET) {
+    const { username, credential } = generateTurnCredentials(TURN_SHARED_SECRET, userId);
+    servers.push({
+      urls: `turn:${TURN_HOST}:3478`,
+      username,
+      credential,
+    });
+  }
+  return servers;
+}
 
 // In-memory session store
 const sessions = new Map<string, SessionRecord>();
@@ -145,7 +165,17 @@ wss.on('connection', (ws: WebSocket) => {
         };
         sessions.set(newSessionId, session);
         peerSession.set(peerId, newSessionId);
-        sendTo(ws, { type: 'session_created', sessionId: newSessionId, tutorPubkey }, peerId, newSessionId);
+        sendTo(
+          ws,
+          {
+            type: 'session_created',
+            sessionId: newSessionId,
+            tutorPubkey,
+            iceServers: buildIceServers(peerId),
+          },
+          peerId,
+          newSessionId,
+        );
         break;
       }
 
@@ -164,14 +194,34 @@ wss.on('connection', (ws: WebSocket) => {
         session.peerRoles.set(peerId, 'viewer');
         peerSession.set(peerId, sid);
 
-        // Notify tutor about new viewer; include tutorPubkey for viewer
+        // Notify tutor about new viewer; include tutorPubkey and iceServers for tutor
         const tutorId = session.tutorPeerId;
         const sessionTutorPubkey = session.tutorPubkey ?? '';
         if (tutorId) {
-          deliverToPeer(session, tutorId, { type: 'viewer_joined', viewerId: peerId, tutorPubkey: sessionTutorPubkey }, sid);
+          deliverToPeer(
+            session,
+            tutorId,
+            {
+              type: 'viewer_joined',
+              viewerId: peerId,
+              tutorPubkey: sessionTutorPubkey,
+              iceServers: buildIceServers(tutorId),
+            },
+            sid,
+          );
         }
-        // Send viewer a session_created message so it learns the tutorPubkey
-        sendTo(ws, { type: 'session_created', sessionId: sid, tutorPubkey: sessionTutorPubkey }, peerId, sid);
+        // Send viewer a session_created message so it learns the tutorPubkey and iceServers
+        sendTo(
+          ws,
+          {
+            type: 'session_created',
+            sessionId: sid,
+            tutorPubkey: sessionTutorPubkey,
+            iceServers: buildIceServers(peerId),
+          },
+          peerId,
+          sid,
+        );
         break;
       }
 
