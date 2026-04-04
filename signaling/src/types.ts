@@ -76,17 +76,26 @@ export type InboundMessage =
   | PingMessage
   | RejoinSessionMessage;
 
+// ICE server descriptor (STUN or TURN)
+export interface IceServer {
+  urls: string;
+  username?: string;
+  credential?: string;
+}
+
 // Outbound messages
 export interface SessionCreatedMessage {
   type: 'session_created';
   sessionId: string;
   tutorPubkey: string;
+  iceServers?: IceServer[];
 }
 
 export interface ViewerJoinedMessage {
   type: 'viewer_joined';
   viewerId: string;
   tutorPubkey: string;
+  iceServers?: IceServer[];
 }
 
 export interface SessionEndedMessage {
