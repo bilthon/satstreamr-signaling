@@ -29,6 +29,10 @@ export interface CreateSessionMessage {
   tutorPubkey?: string;
   /** Cashu mint URL — relayed verbatim to both tutor and viewer in session_created. */
   mintUrl?: string;
+  /** Rate in satoshis per interval — relayed to viewer in session_created. */
+  rateSatsPerInterval?: number;
+  /** Payment interval in seconds — relayed to viewer in session_created. */
+  intervalSeconds?: number;
 }
 
 export interface JoinSessionMessage {
@@ -93,6 +97,10 @@ export interface SessionCreatedMessage {
   iceServers?: IceServer[];
   /** Echoed from create_session.mintUrl — forwarded to both tutor and viewer. */
   mintUrl?: string;
+  /** Rate in satoshis per interval — forwarded to viewer. */
+  rateSatsPerInterval?: number;
+  /** Payment interval in seconds — forwarded to viewer. */
+  intervalSeconds?: number;
 }
 
 export interface ViewerJoinedMessage {
@@ -168,6 +176,9 @@ export interface SessionRecord {
   tutorPubkey?: string;
   // Cashu mint URL relayed to viewers (set from create_session.mintUrl)
   mintUrl?: string;
+  // Rate fields relayed to viewers (set from create_session)
+  rateSatsPerInterval?: number;
+  intervalSeconds?: number;
   // Track grace period timers keyed by peerId
   graceTimers: Map<string, ReturnType<typeof setTimeout>>;
   // Peer roles: map peerId -> 'tutor' | 'viewer'

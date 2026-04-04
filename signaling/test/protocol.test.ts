@@ -240,6 +240,50 @@ describe('end_session', () => {
   });
 });
 
+describe('rate fields relay', () => {
+  test('rate fields sent in create_session are relayed in session_created to viewer', async () => {
+    const tutor = await connect();
+    send(tutor, { type: 'create_session', rateSatsPerInterval: 5, intervalSeconds: 30 });
+    const tutorCreated = await nextMessage(tutor);
+    expect(tutorCreated.type).toBe('session_created');
+    expect(tutorCreated.rateSatsPerInterval).toBe(5);
+    expect(tutorCreated.intervalSeconds).toBe(30);
+    const sessionId = tutorCreated.sessionId as string;
+
+    const viewer = await connect();
+    send(viewer, { type: 'join_session', sessionId });
+    await nextMessage(tutor); // viewer_joined
+    const viewerCreated = await nextMessage(viewer);
+    expect(viewerCreated.type).toBe('session_created');
+    expect(viewerCreated.rateSatsPerInterval).toBe(5);
+    expect(viewerCreated.intervalSeconds).toBe(30);
+
+    tutor.close();
+    viewer.close();
+  });
+
+  test('omitted rate fields default to rateSatsPerInterval=2 and intervalSeconds=10', async () => {
+    const tutor = await connect();
+    send(tutor, { type: 'create_session' });
+    const tutorCreated = await nextMessage(tutor);
+    expect(tutorCreated.type).toBe('session_created');
+    expect(tutorCreated.rateSatsPerInterval).toBe(2);
+    expect(tutorCreated.intervalSeconds).toBe(10);
+    const sessionId = tutorCreated.sessionId as string;
+
+    const viewer = await connect();
+    send(viewer, { type: 'join_session', sessionId });
+    await nextMessage(tutor); // viewer_joined
+    const viewerCreated = await nextMessage(viewer);
+    expect(viewerCreated.type).toBe('session_created');
+    expect(viewerCreated.rateSatsPerInterval).toBe(2);
+    expect(viewerCreated.intervalSeconds).toBe(10);
+
+    tutor.close();
+    viewer.close();
+  });
+});
+
 describe('reconnect grace period', () => {
   test('peer can rejoin within 30s grace period and receive buffered messages', async () => {
     // Setup: tutor creates session, viewer joins
