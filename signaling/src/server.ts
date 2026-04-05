@@ -198,6 +198,30 @@ wss.on('connection', (ws: WebSocket) => {
           sendTo(ws, { type: 'error', code: 'SESSION_NOT_FOUND', message: `Session ${sid} not found` }, peerId, sid);
           break;
         }
+        // Evict any stale disconnected viewer peers before the capacity check.
+        // A viewer with a new peerId (fresh join) should replace the old disconnected
+        // viewer slot rather than being rejected with SESSION_FULL.
+        for (const disconnectedPeerId of session.disconnectedPeers) {
+          const role = session.peerRoles.get(disconnectedPeerId);
+          if (role !== 'tutor') {
+            const timer = session.graceTimers.get(disconnectedPeerId);
+            if (timer) clearTimeout(timer);
+            session.graceTimers.delete(disconnectedPeerId);
+            session.disconnectedPeers.delete(disconnectedPeerId);
+            session.peerRoles.delete(disconnectedPeerId);
+            session.peerBuffers.delete(disconnectedPeerId);
+            peerSession.delete(disconnectedPeerId);
+            log({
+              timestamp: new Date().toISOString(),
+              direction: 'outbound',
+              messageType: 'stale_viewer_evicted',
+              peerId: disconnectedPeerId,
+              sessionId: sid,
+              note: 'evicted to make room for new viewer in join_session',
+            });
+          }
+        }
+
         if (totalPeerCount(session) >= 2) {
           sendTo(ws, { type: 'error', code: 'SESSION_FULL', message: 'Session already has 2 peers' }, peerId, sid);
           break;
