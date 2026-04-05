@@ -26,7 +26,6 @@ export type OutboundMessageType =
 // Inbound messages
 export interface CreateSessionMessage {
   type: 'create_session';
-  tutorPubkey?: string;
   /** Cashu mint URL — relayed verbatim to both tutor and viewer in session_created. */
   mintUrl?: string;
   /** Rate in satoshis per interval — relayed to viewer in session_created. */
@@ -93,7 +92,6 @@ export interface IceServer {
 export interface SessionCreatedMessage {
   type: 'session_created';
   sessionId: string;
-  tutorPubkey: string;
   iceServers?: IceServer[];
   /** Echoed from create_session.mintUrl — forwarded to both tutor and viewer. */
   mintUrl?: string;
@@ -106,7 +104,6 @@ export interface SessionCreatedMessage {
 export interface ViewerJoinedMessage {
   type: 'viewer_joined';
   viewerId: string;
-  tutorPubkey: string;
   iceServers?: IceServer[];
 }
 
@@ -172,8 +169,6 @@ export interface SessionRecord {
   expiresAt?: number;
   // Track which peerId is the tutor (session creator)
   tutorPeerId?: string;
-  // Tutor public key for P2PK token locking (Unit 10)
-  tutorPubkey?: string;
   // Cashu mint URL relayed to viewers (set from create_session.mintUrl)
   mintUrl?: string;
   // Rate fields relayed to viewers (set from create_session)

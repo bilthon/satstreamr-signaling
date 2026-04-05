@@ -153,7 +153,6 @@ wss.on('connection', (ws: WebSocket) => {
 
       case 'create_session': {
         const newSessionId = uuidv4();
-        const tutorPubkey = message.tutorPubkey ?? '';
         const mintUrl = message.mintUrl ?? '';
         const rateSatsPerInterval = message.rateSatsPerInterval ?? 2;
         const intervalSeconds = message.intervalSeconds ?? 10;
@@ -163,7 +162,6 @@ wss.on('connection', (ws: WebSocket) => {
           buffer: [],
           peerBuffers: new Map(),
           tutorPeerId: peerId,
-          tutorPubkey,
           mintUrl,
           rateSatsPerInterval,
           intervalSeconds,
@@ -175,7 +173,6 @@ wss.on('connection', (ws: WebSocket) => {
         const tutorCreatedMsg: SessionCreatedMessage = {
           type: 'session_created',
           sessionId: newSessionId,
-          tutorPubkey,
           iceServers: buildIceServers(peerId),
           ...(mintUrl ? { mintUrl } : {}),
           rateSatsPerInterval,
@@ -200,9 +197,8 @@ wss.on('connection', (ws: WebSocket) => {
         session.peerRoles.set(peerId, 'viewer');
         peerSession.set(peerId, sid);
 
-        // Notify tutor about new viewer; include tutorPubkey and iceServers for tutor
+        // Notify tutor about new viewer; include iceServers for tutor
         const tutorId = session.tutorPeerId;
-        const sessionTutorPubkey = session.tutorPubkey ?? '';
         if (tutorId) {
           deliverToPeer(
             session,
@@ -210,17 +206,15 @@ wss.on('connection', (ws: WebSocket) => {
             {
               type: 'viewer_joined',
               viewerId: peerId,
-              tutorPubkey: sessionTutorPubkey,
               iceServers: buildIceServers(tutorId),
             },
             sid,
           );
         }
-        // Send viewer a session_created message so it learns the tutorPubkey, iceServers, mintUrl, and rate fields
+        // Send viewer a session_created message so it learns the iceServers, mintUrl, and rate fields
         const viewerCreatedMsg: SessionCreatedMessage = {
           type: 'session_created',
           sessionId: sid,
-          tutorPubkey: sessionTutorPubkey,
           iceServers: buildIceServers(peerId),
           ...(session.mintUrl ? { mintUrl: session.mintUrl } : {}),
           rateSatsPerInterval: session.rateSatsPerInterval ?? 2,
