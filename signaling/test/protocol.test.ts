@@ -154,7 +154,7 @@ describe('offer / answer relay', () => {
     const viewer = await connect();
     send(viewer, { type: 'join_session', sessionId });
     await nextMessage(tutor); // viewer_joined
-    await nextMessage(viewer); // session_created (tutorPubkey handshake)
+    await nextMessage(viewer); // session_created
 
     const sdp = { type: 'offer', sdp: 'v=0\r\n...' };
     send(tutor, { type: 'offer', sessionId, sdp });
@@ -199,7 +199,7 @@ describe('ice_candidate relay', () => {
     const viewer = await connect();
     send(viewer, { type: 'join_session', sessionId });
     await nextMessage(tutor); // viewer_joined
-    await nextMessage(viewer); // session_created (tutorPubkey handshake)
+    await nextMessage(viewer); // session_created
 
     const candidate = { candidate: 'candidate:1 1 UDP ...', sdpMid: '0', sdpMLineIndex: 0 };
     send(tutor, { type: 'ice_candidate', sessionId, candidate });
@@ -223,7 +223,7 @@ describe('end_session', () => {
     const viewer = await connect();
     send(viewer, { type: 'join_session', sessionId });
     await nextMessage(tutor); // viewer_joined
-    await nextMessage(viewer); // session_created (tutorPubkey handshake)
+    await nextMessage(viewer); // session_created
 
     // Both peers listen for session_ended
     const tutorEndPromise = nextMessage(tutor);
