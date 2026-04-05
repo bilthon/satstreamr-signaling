@@ -1,5 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 import {
   InboundMessage,
   OutboundMessage,
@@ -35,6 +36,14 @@ function buildIceServers(userId: string): IceServer[] {
 const sessions = new Map<string, SessionRecord>();
 // Map from peerId -> sessionId for quick reverse lookup
 const peerSession = new Map<string, string>();
+
+function generateSessionId(): string {
+  let id: string;
+  do {
+    id = crypto.randomBytes(3).toString('hex');
+  } while (sessions.has(id));
+  return id;
+}
 
 function log(entry: LogEntry): void {
   process.stdout.write(JSON.stringify(entry) + '\n');
@@ -152,7 +161,7 @@ wss.on('connection', (ws: WebSocket) => {
       }
 
       case 'create_session': {
-        const newSessionId = uuidv4();
+        const newSessionId = generateSessionId();
         const mintUrl = message.mintUrl ?? '';
         const rateSatsPerInterval = message.rateSatsPerInterval ?? 2;
         const intervalSeconds = message.intervalSeconds ?? 10;
