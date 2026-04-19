@@ -1,6 +1,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
+import { networkInterfaces } from 'os';
 import {
   InboundMessage,
   OutboundMessage,
@@ -12,6 +13,7 @@ import {
 import { generateTurnCredentials } from './turn-credentials';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 8080;
+const HOST = process.env.HOST ?? '0.0.0.0';
 const GRACE_PERIOD_MS = 30_000;
 
 const TURN_SHARED_SECRET = process.env.TURN_SHARED_SECRET ?? '';
@@ -113,14 +115,44 @@ function totalPeerCount(session: SessionRecord): number {
   return session.peers.size + session.disconnectedPeers.size;
 }
 
-const wss = new WebSocketServer({ port: PORT });
+const wss = new WebSocketServer({ host: HOST, port: PORT });
+
+function getLanAddresses(): string[] {
+  const addrs: string[] = [];
+  const nets = networkInterfaces();
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name] ?? []) {
+      if (net.family === 'IPv4' && !net.internal) {
+        addrs.push(net.address);
+      }
+    }
+  }
+  return addrs;
+}
 
 wss.on('listening', () => {
+  const banner: string[] = [];
+  banner.push('');
+  banner.push('╭────────────────────────────────────────────╮');
+  banner.push('│  satstreamr signaling server               │');
+  banner.push('╰────────────────────────────────────────────╯');
+  banner.push(`  bind:    ${HOST}:${PORT}`);
+  banner.push(`  local:   ws://localhost:${PORT}`);
+  const lan = getLanAddresses();
+  if (lan.length > 0 && (HOST === '0.0.0.0' || HOST === '::')) {
+    for (const ip of lan) {
+      banner.push(`  lan:     ws://${ip}:${PORT}`);
+    }
+  }
+  banner.push('');
+  process.stderr.write(banner.join('\n') + '\n');
+
   log({
     timestamp: new Date().toISOString(),
     direction: 'outbound',
     messageType: 'server_start',
     peerId: 'server',
+    host: HOST,
     port: PORT,
   });
 });
