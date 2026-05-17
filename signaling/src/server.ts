@@ -51,15 +51,73 @@ function log(entry: LogEntry): void {
   process.stdout.write(JSON.stringify(entry) + '\n');
 }
 
+function getSessionRole(session: SessionRecord | undefined, peerId: string): 'tutor' | 'viewer' | undefined {
+  if (!session) return undefined;
+  return session.peerRoles.get(peerId);
+}
+
+function logEvent(params: {
+  event: string;
+  level?: 'info' | 'warn' | 'error';
+  category: 'connection' | 'protocol' | 'session' | 'transport' | 'error' | 'system';
+  direction?: 'inbound' | 'outbound';
+  peerId?: string;
+  sessionId?: string;
+  role?: 'tutor' | 'viewer' | 'server';
+  details?: Record<string, unknown>;
+}): void {
+  log({
+    timestamp: new Date().toISOString(),
+    event: params.event,
+    level: params.level ?? 'info',
+    category: params.category,
+    direction: params.direction,
+    peerId: params.peerId,
+    sessionId: params.sessionId,
+    role: params.role,
+    details: params.details,
+  });
+}
+
+function buildSessionSummary(session: SessionRecord, endedAtMs: number): Record<string, unknown> {
+  const createdAtMs = session.createdAtMs;
+  const durationMs = Math.max(0, endedAtMs - createdAtMs);
+  const billingStartedAtMs = session.firstViewerJoinedAtMs ?? createdAtMs;
+  const billableDurationMs = Math.max(0, endedAtMs - billingStartedAtMs);
+  const rateSatsPerInterval = session.rateSatsPerInterval ?? 2;
+  const intervalSeconds = session.intervalSeconds ?? 10;
+  const billableIntervalsFloat = billableDurationMs / (intervalSeconds * 1000);
+
+  return {
+    createdAtMs,
+    endedAtMs,
+    durationMs,
+    viewerPresentDurationMs: billableDurationMs,
+    rateSatsPerInterval,
+    intervalSeconds,
+    estimatedSatsEarned: billableIntervalsFloat * rateSatsPerInterval,
+    estimatedSatsSpent: billableIntervalsFloat * rateSatsPerInterval,
+    viewerJoinCount: session.viewerJoinCount,
+    rejoinCount: session.rejoinCount,
+    relayOfferCount: session.relayOfferCount,
+    relayAnswerCount: session.relayAnswerCount,
+    relayIceCandidateCount: session.relayIceCandidateCount,
+    bufferedMessageCount: session.bufferedMessageCount,
+  };
+}
+
 function sendTo(ws: WebSocket, message: OutboundMessage, peerId: string, sessionId?: string): void {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(message));
-    log({
-      timestamp: new Date().toISOString(),
+    logEvent({
+      event: 'ws_message_outbound',
+      category: 'protocol',
       direction: 'outbound',
-      messageType: message.type,
       peerId,
       sessionId,
+      details: {
+        messageType: message.type,
+      },
     });
   }
 }
@@ -83,13 +141,17 @@ function deliverToPeer(
       session.peerBuffers.set(targetPeerId, []);
     }
     session.peerBuffers.get(targetPeerId)!.push(message);
-    log({
-      timestamp: new Date().toISOString(),
+    session.bufferedMessageCount += 1;
+    logEvent({
+      event: 'ws_message_buffered',
+      category: 'transport',
       direction: 'outbound',
-      messageType: message.type,
       peerId: targetPeerId,
       sessionId,
-      note: 'buffered (peer disconnected)',
+      details: {
+        messageType: message.type,
+        reason: 'peer_disconnected',
+      },
     });
   }
 }
@@ -147,23 +209,26 @@ wss.on('listening', () => {
   banner.push('');
   process.stderr.write(banner.join('\n') + '\n');
 
-  log({
-    timestamp: new Date().toISOString(),
+  logEvent({
+    event: 'server_started',
+    category: 'system',
     direction: 'outbound',
-    messageType: 'server_start',
     peerId: 'server',
-    host: HOST,
-    port: PORT,
+    role: 'server',
+    details: {
+      host: HOST,
+      port: PORT,
+    },
   });
 });
 
 wss.on('connection', (ws: WebSocket) => {
   const peerId = uuidv4();
 
-  log({
-    timestamp: new Date().toISOString(),
+  logEvent({
+    event: 'ws_connected',
+    category: 'connection',
     direction: 'inbound',
-    messageType: 'connection',
     peerId,
   });
 
@@ -173,17 +238,29 @@ wss.on('connection', (ws: WebSocket) => {
       message = JSON.parse(rawData.toString()) as InboundMessage;
     } catch {
       sendTo(ws, { type: 'error', code: 'INVALID_JSON', message: 'Could not parse JSON' }, peerId);
+      logEvent({
+        event: 'invalid_json',
+        level: 'warn',
+        category: 'protocol',
+        direction: 'inbound',
+        peerId,
+      });
       return;
     }
 
     const sessionId = 'sessionId' in message ? message.sessionId : undefined;
 
-    log({
-      timestamp: new Date().toISOString(),
+    const existingSession = sessionId ? sessions.get(sessionId) : undefined;
+    logEvent({
+      event: 'ws_message_inbound',
+      category: 'protocol',
       direction: 'inbound',
-      messageType: message.type,
       peerId,
       sessionId,
+      role: getSessionRole(existingSession, peerId),
+      details: {
+        messageType: message.type,
+      },
     });
 
     switch (message.type) {
@@ -208,6 +285,13 @@ wss.on('connection', (ws: WebSocket) => {
           intervalSeconds,
           graceTimers: new Map(),
           peerRoles: new Map([[peerId, 'tutor']]),
+          createdAtMs: Date.now(),
+          viewerJoinCount: 0,
+          rejoinCount: 0,
+          relayOfferCount: 0,
+          relayAnswerCount: 0,
+          relayIceCandidateCount: 0,
+          bufferedMessageCount: 0,
         };
         sessions.set(newSessionId, session);
         peerSession.set(peerId, newSessionId);
@@ -220,6 +304,19 @@ wss.on('connection', (ws: WebSocket) => {
           intervalSeconds,
         };
         sendTo(ws, tutorCreatedMsg, peerId, newSessionId);
+        logEvent({
+          event: 'session_created',
+          category: 'session',
+          sessionId: newSessionId,
+          peerId,
+          role: 'tutor',
+          details: {
+            hasTurn: Boolean(TURN_SHARED_SECRET),
+            mintUrlPresent: Boolean(mintUrl),
+            rateSatsPerInterval,
+            intervalSeconds,
+          },
+        });
         break;
       }
 
@@ -228,6 +325,16 @@ wss.on('connection', (ws: WebSocket) => {
         const session = sessions.get(sid);
         if (!session) {
           sendTo(ws, { type: 'error', code: 'SESSION_NOT_FOUND', message: `Session ${sid} not found` }, peerId, sid);
+          logEvent({
+            event: 'session_join_rejected',
+            level: 'warn',
+            category: 'session',
+            peerId,
+            sessionId: sid,
+            details: {
+              reason: 'session_not_found',
+            },
+          });
           break;
         }
         // Evict any stale disconnected viewer peers before the capacity check.
@@ -243,24 +350,41 @@ wss.on('connection', (ws: WebSocket) => {
             session.peerRoles.delete(disconnectedPeerId);
             session.peerBuffers.delete(disconnectedPeerId);
             peerSession.delete(disconnectedPeerId);
-            log({
-              timestamp: new Date().toISOString(),
+            logEvent({
+              event: 'stale_viewer_evicted',
+              category: 'session',
               direction: 'outbound',
-              messageType: 'stale_viewer_evicted',
               peerId: disconnectedPeerId,
               sessionId: sid,
-              note: 'evicted to make room for new viewer in join_session',
+              role: 'viewer',
+              details: {
+                reason: 'replaced_by_new_viewer',
+              },
             });
           }
         }
 
         if (totalPeerCount(session) >= 2) {
           sendTo(ws, { type: 'error', code: 'SESSION_FULL', message: 'Session already has 2 peers' }, peerId, sid);
+          logEvent({
+            event: 'session_join_rejected',
+            level: 'warn',
+            category: 'session',
+            peerId,
+            sessionId: sid,
+            details: {
+              reason: 'session_full',
+            },
+          });
           break;
         }
         session.peers.set(peerId, ws);
         session.peerRoles.set(peerId, 'viewer');
         peerSession.set(peerId, sid);
+        session.viewerJoinCount += 1;
+        if (!session.firstViewerJoinedAtMs) {
+          session.firstViewerJoinedAtMs = Date.now();
+        }
 
         // Notify tutor about new viewer; include iceServers for tutor
         const tutorId = session.tutorPeerId;
@@ -286,6 +410,20 @@ wss.on('connection', (ws: WebSocket) => {
           intervalSeconds: session.intervalSeconds ?? 10,
         };
         sendTo(ws, viewerCreatedMsg, peerId, sid);
+        logEvent({
+          event: 'session_joined',
+          category: 'session',
+          sessionId: sid,
+          peerId,
+          role: 'viewer',
+          details: {
+            activePeerCount: session.peers.size,
+            disconnectedPeerCount: session.disconnectedPeers.size,
+            tutorRateSatsPerInterval: session.rateSatsPerInterval ?? 2,
+            intervalSeconds: session.intervalSeconds ?? 10,
+            mintUrlPresent: Boolean(session.mintUrl),
+          },
+        });
         break;
       }
 
@@ -294,8 +432,19 @@ wss.on('connection', (ws: WebSocket) => {
         const session = sessions.get(sid);
         if (!session) {
           sendTo(ws, { type: 'error', code: 'SESSION_NOT_FOUND' }, peerId, sid);
+          logEvent({
+            event: 'session_not_found',
+            level: 'warn',
+            category: 'session',
+            sessionId: sid,
+            peerId,
+            details: {
+              sourceMessageType: 'offer',
+            },
+          });
           break;
         }
+        session.relayOfferCount += 1;
         for (const otherId of getOtherPeerIds(session, peerId)) {
           deliverToPeer(session, otherId, { type: 'offer', sdp, fromPeerId: peerId }, sid);
         }
@@ -307,8 +456,19 @@ wss.on('connection', (ws: WebSocket) => {
         const session = sessions.get(sid);
         if (!session) {
           sendTo(ws, { type: 'error', code: 'SESSION_NOT_FOUND' }, peerId, sid);
+          logEvent({
+            event: 'session_not_found',
+            level: 'warn',
+            category: 'session',
+            sessionId: sid,
+            peerId,
+            details: {
+              sourceMessageType: 'answer',
+            },
+          });
           break;
         }
+        session.relayAnswerCount += 1;
         for (const otherId of getOtherPeerIds(session, peerId)) {
           deliverToPeer(session, otherId, { type: 'answer', sdp, fromPeerId: peerId }, sid);
         }
@@ -320,8 +480,19 @@ wss.on('connection', (ws: WebSocket) => {
         const session = sessions.get(sid);
         if (!session) {
           sendTo(ws, { type: 'error', code: 'SESSION_NOT_FOUND' }, peerId, sid);
+          logEvent({
+            event: 'session_not_found',
+            level: 'warn',
+            category: 'session',
+            sessionId: sid,
+            peerId,
+            details: {
+              sourceMessageType: 'ice_candidate',
+            },
+          });
           break;
         }
+        session.relayIceCandidateCount += 1;
         for (const otherId of getOtherPeerIds(session, peerId)) {
           deliverToPeer(session, otherId, { type: 'ice_candidate', candidate, fromPeerId: peerId }, sid);
         }
@@ -333,8 +504,19 @@ wss.on('connection', (ws: WebSocket) => {
         const session = sessions.get(sid);
         if (!session) {
           sendTo(ws, { type: 'error', code: 'SESSION_NOT_FOUND' }, peerId, sid);
+          logEvent({
+            event: 'session_not_found',
+            level: 'warn',
+            category: 'session',
+            sessionId: sid,
+            peerId,
+            details: {
+              sourceMessageType: 'end_session',
+            },
+          });
           break;
         }
+        const endedAtMs = Date.now();
         // Notify all active peers
         for (const [pid, peerWs] of session.peers) {
           sendTo(peerWs, { type: 'session_ended' }, pid, sid);
@@ -348,6 +530,25 @@ wss.on('connection', (ws: WebSocket) => {
         for (const pid of session.disconnectedPeers) {
           peerSession.delete(pid);
         }
+        logEvent({
+          event: 'session_ended',
+          category: 'session',
+          sessionId: sid,
+          peerId,
+          role: getSessionRole(session, peerId),
+          details: {
+            reason: 'explicit_end_session',
+          },
+        });
+        logEvent({
+          event: 'session_summary',
+          category: 'session',
+          sessionId: sid,
+          details: {
+            ...buildSessionSummary(session, endedAtMs),
+            endedReason: 'explicit_end_session',
+          },
+        });
         sessions.delete(sid);
         break;
       }
@@ -357,6 +558,16 @@ wss.on('connection', (ws: WebSocket) => {
         const session = sessions.get(sid);
         if (!session) {
           sendTo(ws, { type: 'error', code: 'SESSION_NOT_FOUND', message: `Session ${sid} not found or expired` }, peerId, sid);
+          logEvent({
+            event: 'session_rejoin_rejected',
+            level: 'warn',
+            category: 'session',
+            sessionId: sid,
+            peerId,
+            details: {
+              reason: 'session_not_found_or_expired',
+            },
+          });
           break;
         }
 
@@ -365,6 +576,16 @@ wss.on('connection', (ws: WebSocket) => {
           // No grace-period slots — check if session is full with active peers
           if (session.peers.size >= 2) {
             sendTo(ws, { type: 'error', code: 'SESSION_FULL' }, peerId, sid);
+            logEvent({
+              event: 'session_rejoin_rejected',
+              level: 'warn',
+              category: 'session',
+              sessionId: sid,
+              peerId,
+              details: {
+                reason: 'session_full',
+              },
+            });
             break;
           }
           // Session has room but no grace slot — treat as a fresh join
@@ -397,6 +618,7 @@ wss.on('connection', (ws: WebSocket) => {
           session.peerRoles.set(peerId, role);
           peerSession.set(peerId, sid);
           session.expiresAt = undefined;
+          session.rejoinCount += 1;
 
           if (role === 'tutor') {
             session.tutorPeerId = peerId;
@@ -413,14 +635,17 @@ wss.on('connection', (ws: WebSocket) => {
             sendTo(ws, msg, peerId, sid);
           }
 
-          log({
-            timestamp: new Date().toISOString(),
+          logEvent({
+            event: 'session_rejoined',
+            category: 'session',
             direction: 'outbound',
-            messageType: 'rejoin_ack',
             peerId,
             sessionId: sid,
-            restoredFrom: rejoiningOldPeerId,
-            flushedMessages: buffered.length,
+            role,
+            details: {
+              restoredFromPeerId: rejoiningOldPeerId,
+              flushedBufferedMessages: buffered.length,
+            },
           });
         }
         break;
@@ -428,22 +653,34 @@ wss.on('connection', (ws: WebSocket) => {
 
       default: {
         sendTo(ws, { type: 'error', code: 'UNKNOWN_MESSAGE_TYPE' }, peerId);
+        logEvent({
+          event: 'unknown_message_type',
+          level: 'warn',
+          category: 'protocol',
+          direction: 'inbound',
+          peerId,
+          sessionId,
+          details: {
+            messageType: (message as { type?: unknown }).type,
+          },
+        });
       }
     }
   });
 
   ws.on('close', () => {
-    log({
-      timestamp: new Date().toISOString(),
+    const sid = peerSession.get(peerId);
+    const session = sid ? sessions.get(sid) : undefined;
+    logEvent({
+      event: 'ws_disconnected',
+      category: 'connection',
       direction: 'inbound',
-      messageType: 'disconnection',
       peerId,
+      sessionId: sid,
+      role: getSessionRole(session, peerId),
     });
 
-    const sid = peerSession.get(peerId);
     if (!sid) return;
-
-    const session = sessions.get(sid);
     if (!session) return;
 
     // Remove from active peers map
@@ -457,12 +694,13 @@ wss.on('connection', (ws: WebSocket) => {
 
     // Start grace timer
     const timer = setTimeout(() => {
-      log({
-        timestamp: new Date().toISOString(),
+      logEvent({
+        event: 'session_grace_expired',
+        category: 'session',
         direction: 'outbound',
-        messageType: 'session_grace_expired',
         peerId,
         sessionId: sid,
+        role: getSessionRole(session, peerId),
       });
       session.graceTimers.delete(peerId);
       session.disconnectedPeers.delete(peerId);
@@ -472,13 +710,27 @@ wss.on('connection', (ws: WebSocket) => {
 
       // If no more active or grace-period peers, evict session
       if (session.peers.size === 0 && session.disconnectedPeers.size === 0) {
+        const endedAtMs = Date.now();
+        logEvent({
+          event: 'session_summary',
+          category: 'session',
+          sessionId: sid,
+          details: {
+            ...buildSessionSummary(session, endedAtMs),
+            endedReason: 'grace_expired_all_peers',
+          },
+        });
         sessions.delete(sid);
-        log({
-          timestamp: new Date().toISOString(),
+        logEvent({
+          event: 'session_evicted',
+          category: 'session',
           direction: 'outbound',
-          messageType: 'session_evicted',
           peerId: 'server',
           sessionId: sid,
+          role: 'server',
+          details: {
+            reason: 'grace_expired_all_peers',
+          },
         });
       }
     }, GRACE_PERIOD_MS);
@@ -487,12 +739,19 @@ wss.on('connection', (ws: WebSocket) => {
   });
 
   ws.on('error', (err: Error) => {
-    log({
-      timestamp: new Date().toISOString(),
+    const sid = peerSession.get(peerId);
+    const session = sid ? sessions.get(sid) : undefined;
+    logEvent({
+      event: 'ws_error',
+      level: 'error',
+      category: 'error',
       direction: 'inbound',
-      messageType: 'ws_error',
       peerId,
-      error: err.message,
+      sessionId: sid,
+      role: getSessionRole(session, peerId),
+      details: {
+        error: err.message,
+      },
     });
   });
 });

@@ -178,14 +178,27 @@ export interface SessionRecord {
   graceTimers: Map<string, ReturnType<typeof setTimeout>>;
   // Peer roles: map peerId -> 'tutor' | 'viewer'
   peerRoles: Map<string, 'tutor' | 'viewer'>;
+  // Analytics timing and counters for session-level insights
+  createdAtMs: number;
+  firstViewerJoinedAtMs?: number;
+  viewerJoinCount: number;
+  rejoinCount: number;
+  relayOfferCount: number;
+  relayAnswerCount: number;
+  relayIceCandidateCount: number;
+  bufferedMessageCount: number;
 }
 
 // Log entry structure
 export interface LogEntry {
   timestamp: string;
-  direction: 'inbound' | 'outbound';
-  messageType: string;
-  peerId: string;
+  event: string;
+  level: 'info' | 'warn' | 'error';
+  category: 'connection' | 'protocol' | 'session' | 'transport' | 'error' | 'system';
+  direction?: 'inbound' | 'outbound';
+  peerId?: string;
   sessionId?: string;
+  role?: 'tutor' | 'viewer' | 'server';
+  details?: Record<string, unknown>;
   [key: string]: unknown;
 }
