@@ -1,5 +1,4 @@
 import { WebSocketServer, WebSocket } from 'ws';
-import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import { networkInterfaces } from 'os';
 import {
@@ -225,7 +224,7 @@ wss.on('listening', () => {
 });
 
 wss.on('connection', (ws: WebSocket) => {
-  const peerId = uuidv4();
+  const peerId = crypto.randomUUID();
 
   logEvent({
     event: 'ws_connected',
