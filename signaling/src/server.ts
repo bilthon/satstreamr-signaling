@@ -14,6 +14,8 @@ import { generateTurnCredentials } from './turn-credentials';
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 8080;
 const HOST = process.env.HOST ?? '0.0.0.0';
 const GRACE_PERIOD_MS = 30_000;
+const SHUTDOWN_TIMEOUT_MS = 3_000;
+let shuttingDown = false;
 
 const TURN_SHARED_SECRET = process.env.TURN_SHARED_SECRET ?? '';
 const TURN_HOST = process.env.TURN_HOST ?? 'localhost';
@@ -670,6 +672,7 @@ wss.on('connection', (ws: WebSocket) => {
   });
 
   ws.on('close', () => {
+    if (shuttingDown) return;
     const sid = peerSession.get(peerId);
     const session = sid ? sessions.get(sid) : undefined;
     logEvent({
@@ -758,3 +761,46 @@ wss.on('connection', (ws: WebSocket) => {
 });
 
 export { wss, sessions, peerSession };
+
+function shutdown(signal: NodeJS.Signals): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logEvent({
+    event: 'server_stopping',
+    category: 'system',
+    peerId: 'server',
+    role: 'server',
+    details: { signal, activeSessions: sessions.size, connectedClients: wss.clients.size },
+  });
+
+  const endedAtMs = Date.now();
+  for (const [sid, session] of sessions) {
+    for (const [pid, peerWs] of session.peers) {
+      sendTo(peerWs, { type: 'session_ended' }, pid, sid);
+    }
+    for (const timer of session.graceTimers.values()) clearTimeout(timer);
+    logEvent({
+      event: 'session_summary',
+      category: 'session',
+      sessionId: sid,
+      details: { ...buildSessionSummary(session, endedAtMs), endedReason: 'server_shutdown' },
+    });
+  }
+  sessions.clear();
+  peerSession.clear();
+
+  for (const client of wss.clients) client.close(1001, 'server shutting down');
+
+  const finish = () => {
+    logEvent({ event: 'server_stopped', category: 'system', peerId: 'server', role: 'server' });
+    process.exit(0);
+  };
+  setTimeout(() => {
+    for (const client of wss.clients) client.terminate();
+    finish();
+  }, SHUTDOWN_TIMEOUT_MS).unref();
+  wss.close(finish);
+}
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
