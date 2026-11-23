@@ -1,3 +1,4 @@
+import { afterAll, beforeAll, describe, expect, test } from '@jest/globals';
 import { WebSocket } from 'ws';
 import { ChildProcess, spawn } from 'child_process';
 import * as path from 'path';
@@ -50,7 +51,7 @@ beforeAll((done) => {
 
   serverProcess.stderr?.on('data', (data: Buffer) => {
     // eslint-disable-next-line no-console
-    console.error('Server error:', data.toString());
+    console.error('Server stderr:', data.toString());
   });
 
   // Wait for server to be ready

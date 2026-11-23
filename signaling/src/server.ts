@@ -193,21 +193,23 @@ function getLanAddresses(): string[] {
 }
 
 wss.on('listening', () => {
-  const banner: string[] = [];
-  banner.push('');
-  banner.push('╭────────────────────────────────────────────╮');
-  banner.push('│  satstreamr signaling server               │');
-  banner.push('╰────────────────────────────────────────────╯');
-  banner.push(`  bind:    ${HOST}:${PORT}`);
-  banner.push(`  local:   ws://localhost:${PORT}`);
-  const lan = getLanAddresses();
-  if (lan.length > 0 && (HOST === '0.0.0.0' || HOST === '::')) {
-    for (const ip of lan) {
-      banner.push(`  lan:     ws://${ip}:${PORT}`);
+  if (process.stderr.isTTY) {
+    const banner: string[] = [];
+    banner.push('');
+    banner.push('╭────────────────────────────────────────────╮');
+    banner.push('│  satstreamr signaling server               │');
+    banner.push('╰────────────────────────────────────────────╯');
+    banner.push(`  bind:    ${HOST}:${PORT}`);
+    banner.push(`  local:   ws://localhost:${PORT}`);
+    const lan = getLanAddresses();
+    if (lan.length > 0 && (HOST === '0.0.0.0' || HOST === '::')) {
+      for (const ip of lan) {
+        banner.push(`  lan:     ws://${ip}:${PORT}`);
+      }
     }
+    banner.push('');
+    process.stderr.write(banner.join('\n') + '\n');
   }
-  banner.push('');
-  process.stderr.write(banner.join('\n') + '\n');
 
   logEvent({
     event: 'server_started',
