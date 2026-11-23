@@ -12,6 +12,7 @@ test('piped startup emits JSON on stdout without a stderr banner', async () => {
   let stdout = '';
   let stderr = '';
   let timedOut = false;
+  let shutdownRequested = false;
   // Only this owned child is terminated; no polling or fixed readiness sleeps.
   const deadline = setTimeout(() => {
     timedOut = true;
@@ -20,7 +21,10 @@ test('piped startup emits JSON on stdout without a stderr banner', async () => {
   const result = await new Promise<{ code: number | null; signal: string | null }>((resolve, reject) => {
     child.stdout.on('data', (data: Buffer) => {
       stdout += data.toString();
-      if (stdout.includes('\n')) child.kill('SIGTERM');
+      if (!shutdownRequested && stdout.includes('\n')) {
+        shutdownRequested = true;
+        child.kill('SIGTERM');
+      }
     });
     child.stderr.on('data', (data: Buffer) => { stderr += data.toString(); });
     child.once('error', (error) => {
@@ -32,9 +36,9 @@ test('piped startup emits JSON on stdout without a stderr banner', async () => {
       resolve({ code, signal });
     });
   });
-  expect({ timedOut, ...result }).toEqual({ timedOut: false, code: null, signal: 'SIGTERM' });
+  expect({ timedOut, ...result }).toEqual({ timedOut: false, code: 0, signal: null });
   expect(stdout.endsWith('\n')).toBe(true);
-  const entries = stdout.trimEnd().split('\n').map((line) => JSON.parse(line));
+  const entries = stdout.slice(0, -1).split('\n').map((line) => JSON.parse(line));
   expect(entries).toEqual([{
     timestamp: expect.any(String),
     event: 'server_started',
@@ -44,7 +48,24 @@ test('piped startup emits JSON on stdout without a stderr banner', async () => {
     peerId: 'server',
     role: 'server',
     details: { host: '127.0.0.1', port: 0 },
+  }, {
+    timestamp: expect.any(String),
+    event: 'server_stopping',
+    level: 'info',
+    category: 'system',
+    peerId: 'server',
+    role: 'server',
+    details: { signal: 'SIGTERM', activeSessions: 0, connectedClients: 0 },
+  }, {
+    timestamp: expect.any(String),
+    event: 'server_stopped',
+    level: 'info',
+    category: 'system',
+    peerId: 'server',
+    role: 'server',
   }]);
-  expect(Number.isNaN(Date.parse(entries[0].timestamp))).toBe(false);
+  for (const entry of entries) {
+    expect(Number.isNaN(Date.parse(entry.timestamp))).toBe(false);
+  }
   expect(stderr).toBe('');
 });
