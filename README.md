@@ -34,7 +34,7 @@ It returns ICE server configuration to clients:
 
 ## Requirements
 
-- Node.js (version managed by your local setup)
+- Node.js (use a supported LTS release; peer IDs use native `crypto.randomUUID`)
 - npm
 
 ## Install

@@ -117,7 +117,7 @@ describe('join_session', () => {
     // Tutor should receive viewer_joined
     const notification = await nextMessage(tutor);
     expect(notification.type).toBe('viewer_joined');
-    expect(typeof notification.viewerId).toBe('string');
+    expect(notification.viewerId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 
     tutor.close();
     viewer.close();
