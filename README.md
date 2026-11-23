@@ -115,6 +115,10 @@ Outbound (server -> client):
 
 ## Logging
 
+The startup banner is written to stderr only when stderr is an interactive terminal
+(`isTTY`). Piped startup emits no banner; the `server_started` JSON event is always
+written to stdout.
+
 The server writes JSON log entries to stdout for inbound/outbound events, with
 fields like:
 
