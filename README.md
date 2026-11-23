@@ -131,11 +131,29 @@ pm2 restart satstreamr-signaling
 
 ### 2. nginx (TLS + WebSocket proxy)
 
-Copy `deploy/nginx/satstreamr-signaling.conf` to
-`/etc/nginx/sites-available/`, replace `signal.example.com`, enable it, and
-issue certificates with `certbot --nginx -d <domain>`. It raises
-`proxy_read_timeout` because nginx's 60s default drops idle signaling
-sockets. Clients connect to `wss://<domain>`.
+`deploy/nginx/satstreamr-signaling.conf` is a **location snippet**, not a
+standalone site. Add it inside the existing HTTPS `server` block, or replace
+its existing `location /ws` block (do not duplicate it). Keep the existing
+TLS/Certbot directives, frontend locations, and `/mint/` proxy unchanged.
+Do not enable the snippet as a standalone file in `sites-enabled`.
+
+Clients connect to `wss://satstreamr.com/ws` (use your own domain for other
+installations). The snippet matches the existing production `/ws` proxy,
+including its 24-hour idle timeouts. The Node process must listen on
+`127.0.0.1:8080`.
+
+This assumes HTTPS and valid certificates are already configured. For a
+new host, configure HTTP and obtain certificates before enabling HTTPS;
+this snippet does not provision TLS.
+
+After editing the site's configuration, validate it before reloading:
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+A successful configuration test does not verify the upstream: also check a
+real WebSocket connection to `/ws` after starting the signaling process.
 
 ### 3. coturn
 
