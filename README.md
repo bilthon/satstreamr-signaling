@@ -32,10 +32,10 @@ It returns ICE server configuration to clients:
 
 ## Project layout
 
-- `signaling/src/server.ts` - WebSocket server and session lifecycle logic
-- `signaling/src/types.ts` - inbound/outbound protocol message types
-- `signaling/src/turn-credentials.ts` - HMAC TURN credential generation
-- `signaling/test/` - integration tests for protocol and TURN behavior
+- `src/server.ts` - WebSocket server and session lifecycle logic
+- `src/types.ts` - inbound/outbound protocol message types
+- `src/turn-credentials.ts` - HMAC TURN credential generation
+- `test/` - integration tests for protocol and TURN behavior
 
 ## Requirements
 
@@ -44,24 +44,27 @@ It returns ICE server configuration to clients:
 
 ## Install
 
+Run all commands below from the repository root.
+
 ```bash
-cd signaling
-npm install
+npm ci --include=dev
 ```
+
+Development dependencies are required to compile TypeScript, including for a
+production build.
 
 ## Run
 
 Development:
 
 ```bash
-cd signaling
 npm run dev
 ```
 
 Production-style run:
 
 ```bash
-cd signaling
+npm ci --include=dev
 npm run build
 npm start
 ```
@@ -69,7 +72,6 @@ npm start
 Or with the helper script:
 
 ```bash
-cd signaling
 ./start.sh
 ```
 
@@ -89,7 +91,7 @@ TURN integration (optional):
 
 Target: one Linux host running the signaling server under PM2, nginx for
 TLS (`wss://`), and coturn as TURN relay. Templates live in `deploy/` and
-`signaling/ecosystem.config.js`.
+`ecosystem.config.js`.
 
 ```text
 browser --wss:443--> nginx --ws:127.0.0.1:8080--> node (PM2)
@@ -107,7 +109,7 @@ browser --turn:3478 + UDP 49152-65535--> coturn
 
 ### 1. Signaling server (PM2)
 
-Create `signaling/.env` (keep it out of git):
+Create `.env` (keep it out of git):
 
 ```bash
 HOST=127.0.0.1
@@ -119,8 +121,7 @@ TURN_HOST=turn.example.com
 ```bash
 npm install -g pm2
 pm2 install pm2-logrotate        # stdout JSON logs grow unbounded otherwise
-cd signaling
-npm ci && npm run build
+npm ci --include=dev && npm run build
 pm2 start ecosystem.config.js
 pm2 save && pm2 startup          # survive reboots (run the printed command)
 ```
@@ -130,7 +131,7 @@ The ecosystem file loads `.env` with `node --env-file` (Node >= 20.6).
 Update:
 
 ```bash
-git pull && cd signaling && npm ci && npm run build
+git pull && npm ci --include=dev && npm run build
 pm2 restart satstreamr-signaling
 ```
 
@@ -224,7 +225,6 @@ fields like:
 ## Tests
 
 ```bash
-cd signaling
 npm test
 ```
 
