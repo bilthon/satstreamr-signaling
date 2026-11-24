@@ -1,3 +1,4 @@
+import { afterAll, beforeAll, describe, expect, test } from '@jest/globals';
 import { WebSocket } from 'ws';
 import { ChildProcess, spawn } from 'child_process';
 import * as path from 'path';
@@ -6,6 +7,7 @@ const SERVER_URL = 'ws://localhost:8080';
 const DIST_SERVER = path.resolve(__dirname, '../dist/server.js');
 
 let serverProcess: ChildProcess;
+let stdout = '';
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -44,13 +46,13 @@ beforeAll((done) => {
     detached: false,
   });
 
-  serverProcess.stdout?.on('data', (_data: Buffer) => {
-    // Server logs — suppress in test output
+  serverProcess.stdout?.on('data', (data: Buffer) => {
+    stdout += data.toString();
   });
 
   serverProcess.stderr?.on('data', (data: Buffer) => {
     // eslint-disable-next-line no-console
-    console.error('Server error:', data.toString());
+    console.error('Server stderr:', data.toString());
   });
 
   // Wait for server to be ready
@@ -86,7 +88,16 @@ describe('ping / pong', () => {
     send(ws, { type: 'ping' });
     const msg = await nextMessage(ws);
     expect(msg.type).toBe('pong');
-    ws.close();
+    try {
+      for (let i = 0; i < 50 && !stdout.includes('ws_message_outbound'); i++) await sleep(20);
+      const entries = stdout.trim().split('\n').map((line) => JSON.parse(line));
+      for (const [direction, messageType] of [['inbound', 'ping'], ['outbound', 'pong']]) {
+        expect(entries).toContainEqual(expect.objectContaining({
+          event: `ws_message_${direction}`, direction, messageType,
+          details: expect.objectContaining({ messageType }),
+        }));
+      }
+    } finally { ws.close(); }
   });
 });
 
@@ -116,7 +127,7 @@ describe('join_session', () => {
     // Tutor should receive viewer_joined
     const notification = await nextMessage(tutor);
     expect(notification.type).toBe('viewer_joined');
-    expect(typeof notification.viewerId).toBe('string');
+    expect(notification.viewerId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 
     tutor.close();
     viewer.close();

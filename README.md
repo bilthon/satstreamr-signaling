@@ -1,6 +1,11 @@
 # satstreamr-signaling
 
-Minimal WebSocket signaling server for satstreamr WebRTC sessions.
+Minimal WebSocket signaling server for [satstreamr](https://github.com/bilthon/satstreamr),
+a peer-to-peer metered live video streaming platform.
+
+See the [satstreamr README](https://github.com/bilthon/satstreamr) and
+[INSTALL.md](https://github.com/bilthon/satstreamr/blob/main/INSTALL.md) for the
+overall architecture and platform setup. Signaling service setup is documented below.
 
 ## What this service is
 
@@ -27,36 +32,39 @@ It returns ICE server configuration to clients:
 
 ## Project layout
 
-- `signaling/src/server.ts` - WebSocket server and session lifecycle logic
-- `signaling/src/types.ts` - inbound/outbound protocol message types
-- `signaling/src/turn-credentials.ts` - HMAC TURN credential generation
-- `signaling/test/` - integration tests for protocol and TURN behavior
+- `src/server.ts` - WebSocket server and session lifecycle logic
+- `src/types.ts` - inbound/outbound protocol message types
+- `src/turn-credentials.ts` - HMAC TURN credential generation
+- `test/` - integration tests for protocol and TURN behavior
 
 ## Requirements
 
-- Node.js (version managed by your local setup)
+- Node.js (use a supported LTS release; peer IDs use native `crypto.randomUUID`)
 - npm
 
 ## Install
 
+Run all commands below from the repository root.
+
 ```bash
-cd signaling
-npm install
+npm ci --include=dev
 ```
+
+Development dependencies are required to compile TypeScript, including for a
+production build.
 
 ## Run
 
 Development:
 
 ```bash
-cd signaling
 npm run dev
 ```
 
 Production-style run:
 
 ```bash
-cd signaling
+npm ci --include=dev
 npm run build
 npm start
 ```
@@ -64,7 +72,6 @@ npm start
 Or with the helper script:
 
 ```bash
-cd signaling
 ./start.sh
 ```
 
@@ -79,6 +86,93 @@ TURN integration (optional):
 
 - `TURN_SHARED_SECRET` (empty by default; when set, TURN credentials are added)
 - `TURN_HOST` (default: `localhost`)
+
+## Deployment
+
+Target: one Linux host running the signaling server under PM2, nginx for
+TLS (`wss://`), and coturn as TURN relay. Templates live in `deploy/` and
+`ecosystem.config.js`.
+
+```text
+browser --wss:443--> nginx --ws:127.0.0.1:8080--> node (PM2)
+browser --turn:3478 + UDP 49152-65535--> coturn
+```
+
+### Constraints
+
+- **Exactly one instance.** Sessions live in process memory. Never use PM2
+  cluster mode or `instances > 1`.
+- **A restart ends every active session.** On `SIGTERM`/`SIGINT` the server
+  sends `session_ended` to connected peers, logs a `session_summary` with
+  `endedReason: "server_shutdown"`, closes sockets with code `1001`, and
+  exits `0` (forced after 3s). Deploy when no streams are live.
+
+### 1. Signaling server (PM2)
+
+Create `.env` (keep it out of git):
+
+```bash
+HOST=127.0.0.1
+PORT=8080
+TURN_SHARED_SECRET=<openssl rand -hex 32>
+TURN_HOST=turn.example.com
+```
+
+```bash
+npm install -g pm2
+pm2 install pm2-logrotate        # stdout JSON logs grow unbounded otherwise
+npm ci --include=dev && npm run build
+pm2 start ecosystem.config.js
+pm2 save && pm2 startup          # survive reboots (run the printed command)
+```
+
+The ecosystem file loads `.env` with `node --env-file` (Node >= 20.6).
+
+Update:
+
+```bash
+git pull && npm ci --include=dev && npm run build
+pm2 restart satstreamr-signaling
+```
+
+### 2. nginx (TLS + WebSocket proxy)
+
+`deploy/nginx/satstreamr-signaling.conf` is a **location snippet**, not a
+standalone site. Add it inside the existing HTTPS `server` block, or replace
+its existing `location /ws` block (do not duplicate it). Keep the existing
+TLS/Certbot directives, frontend locations, and `/mint/` proxy unchanged.
+Do not enable the snippet as a standalone file in `sites-enabled`.
+
+Clients connect to `wss://satstreamr.com/ws` (use your own domain for other
+installations). The snippet matches the existing production `/ws` proxy,
+including its 24-hour idle timeouts. The Node process must listen on
+`127.0.0.1:8080`.
+
+This assumes HTTPS and valid certificates are already configured. For a
+new host, configure HTTP and obtain certificates before enabling HTTPS;
+this snippet does not provision TLS.
+
+After editing the site's configuration, validate it before reloading:
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+A successful configuration test does not verify the upstream: also check a
+real WebSocket connection to `/ws` after starting the signaling process.
+
+### 3. coturn
+
+Install coturn and use `deploy/coturn/turnserver.conf` as
+`/etc/turnserver.conf`. Set `external-ip`, `realm`, and
+`static-auth-secret` (same value as `TURN_SHARED_SECRET`).
+
+### Firewall
+
+- 80/tcp, 443/tcp: nginx
+- 3478/tcp+udp: TURN
+- 49152-65535/udp: TURN relay range
+- 8080: do **not** expose (loopback only)
 
 ## Protocol overview
 
@@ -115,6 +209,10 @@ Outbound (server -> client):
 
 ## Logging
 
+The startup banner is written to stderr only when stderr is an interactive terminal
+(`isTTY`). Piped startup emits no banner; the `server_started` JSON event is always
+written to stdout.
+
 The server writes JSON log entries to stdout for inbound/outbound events, with
 fields like:
 
@@ -127,7 +225,6 @@ fields like:
 ## Tests
 
 ```bash
-cd signaling
 npm test
 ```
 
@@ -140,3 +237,12 @@ Current tests cover:
 - reconnect and buffered delivery
 - TURN credential injection
 - `mintUrl`, `rateSatsPerInterval`, and `intervalSeconds` relay
+
+## License
+
+satstreamr-signaling is released under the [MIT License](LICENSE).
+
+Third-party dependencies retain their own licenses; all current runtime
+and build-time dependencies are MIT or MIT-compatible. The "satstreamr"
+name and logo are not covered by the MIT grant and are reserved by the
+author.

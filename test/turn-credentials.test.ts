@@ -70,7 +70,7 @@ function spawnServer(
   });
   child.stderr?.on('data', (data: Buffer) => {
     // eslint-disable-next-line no-console
-    console.error('Server error:', data.toString());
+    console.error('Server stderr:', data.toString());
   });
 
   return child;
@@ -215,7 +215,7 @@ describe('No TURN entry when TURN_SHARED_SECRET is unset', () => {
     child.stdout?.on('data', (_data: Buffer) => { /* suppress */ });
     child.stderr?.on('data', (data: Buffer) => {
       // eslint-disable-next-line no-console
-      console.error('Server error:', data.toString());
+      console.error('Server stderr:', data.toString());
     });
 
     serverProcess = child;
