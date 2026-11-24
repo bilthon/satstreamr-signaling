@@ -7,6 +7,7 @@ import {
   SessionCreatedMessage,
   SessionRecord,
   LogEntry,
+  LogEvent,
   IceServer,
 } from './types';
 import { generateTurnCredentials } from './turn-credentials';
@@ -58,7 +59,7 @@ function getSessionRole(session: SessionRecord | undefined, peerId: string): 'tu
 }
 
 function logEvent(params: {
-  event: string;
+  event: LogEvent;
   level?: 'info' | 'warn' | 'error';
   category: 'connection' | 'protocol' | 'session' | 'transport' | 'error' | 'system';
   direction?: 'inbound' | 'outbound';
@@ -67,7 +68,17 @@ function logEvent(params: {
   role?: 'tutor' | 'viewer' | 'server';
   details?: Record<string, unknown>;
 }): void {
+  const legacyAliases: Partial<Record<LogEvent, string>> = {
+    server_started: 'server_start',
+    ws_connected: 'connection',
+    session_rejoined: 'rejoin_ack',
+    ws_disconnected: 'disconnection',
+  };
   log({
+    messageType: legacyAliases[params.event] ??
+      (typeof params.details?.messageType === 'string' ? params.details.messageType : params.event),
+    ...(params.event === 'ws_error' && typeof params.details?.error === 'string'
+      ? { error: params.details.error } : {}),
     timestamp: new Date().toISOString(),
     event: params.event,
     level: params.level ?? 'info',

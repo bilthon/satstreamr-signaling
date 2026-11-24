@@ -42,6 +42,7 @@ test('piped startup emits JSON on stdout without a stderr banner', async () => {
   expect(entries).toEqual([{
     timestamp: expect.any(String),
     event: 'server_started',
+    messageType: 'server_start',
     level: 'info',
     category: 'system',
     direction: 'outbound',
@@ -51,6 +52,7 @@ test('piped startup emits JSON on stdout without a stderr banner', async () => {
   }, {
     timestamp: expect.any(String),
     event: 'server_stopping',
+    messageType: 'server_stopping',
     level: 'info',
     category: 'system',
     peerId: 'server',
@@ -59,6 +61,7 @@ test('piped startup emits JSON on stdout without a stderr banner', async () => {
   }, {
     timestamp: expect.any(String),
     event: 'server_stopped',
+    messageType: 'server_stopped',
     level: 'info',
     category: 'system',
     peerId: 'server',
