@@ -1,3 +1,4 @@
+import { afterAll, beforeAll, describe, expect, test } from '@jest/globals';
 import { WebSocket } from 'ws';
 import { ChildProcess, spawn } from 'child_process';
 import * as path from 'path';
@@ -50,7 +51,7 @@ beforeAll((done) => {
 
   serverProcess.stderr?.on('data', (data: Buffer) => {
     // eslint-disable-next-line no-console
-    console.error('Server error:', data.toString());
+    console.error('Server stderr:', data.toString());
   });
 
   // Wait for server to be ready
@@ -116,7 +117,7 @@ describe('join_session', () => {
     // Tutor should receive viewer_joined
     const notification = await nextMessage(tutor);
     expect(notification.type).toBe('viewer_joined');
-    expect(typeof notification.viewerId).toBe('string');
+    expect(notification.viewerId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 
     tutor.close();
     viewer.close();
