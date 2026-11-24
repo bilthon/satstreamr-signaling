@@ -43,6 +43,8 @@ test('piped startup emits JSON on stdout without a stderr banner', async () => {
     timestamp: expect.any(String),
     event: 'server_started',
     messageType: 'server_start',
+    host: '127.0.0.1',
+    port: 0,
     level: 'info',
     category: 'system',
     direction: 'outbound',

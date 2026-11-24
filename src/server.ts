@@ -79,6 +79,10 @@ function logEvent(params: {
       (typeof params.details?.messageType === 'string' ? params.details.messageType : params.event),
     ...(params.event === 'ws_error' && typeof params.details?.error === 'string'
       ? { error: params.details.error } : {}),
+    ...(params.event === 'server_started' ? {
+      host: params.details?.host as string,
+      port: params.details?.port as number,
+    } : {}),
     timestamp: new Date().toISOString(),
     event: params.event,
     level: params.level ?? 'info',

@@ -215,6 +215,8 @@ export type LogEvent =
 
 // Log entry structure
 export interface LogEntry {
+  host?: string;
+  port?: number;
   messageType?: string;
   error?: string;
   timestamp: string;
