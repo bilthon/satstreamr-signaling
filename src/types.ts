@@ -189,12 +189,36 @@ export interface SessionRecord {
   bufferedMessageCount: number;
 }
 
+export type LogEvent =
+  | 'server_started'
+  | 'server_stopping'
+  | 'server_stopped'
+  | 'ws_connected'
+  | 'ws_disconnected'
+  | 'ws_error'
+  | 'ws_message_inbound'
+  | 'ws_message_outbound'
+  | 'ws_message_buffered'
+  | 'invalid_json'
+  | 'unknown_message_type'
+  | 'session_created'
+  | 'session_joined'
+  | 'session_join_rejected'
+  | 'session_rejoined'
+  | 'session_rejoin_rejected'
+  | 'session_not_found'
+  | 'session_ended'
+  | 'session_summary'
+  | 'session_grace_expired'
+  | 'session_evicted'
+  | 'stale_viewer_evicted';
+
 // Log entry structure
 export interface LogEntry {
   messageType?: string;
   error?: string;
   timestamp: string;
-  event: string;
+  event: LogEvent;
   level: 'info' | 'warn' | 'error';
   category: 'connection' | 'protocol' | 'session' | 'transport' | 'error' | 'system';
   direction?: 'inbound' | 'outbound';
