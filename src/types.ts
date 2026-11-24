@@ -191,6 +191,8 @@ export interface SessionRecord {
 
 // Log entry structure
 export interface LogEntry {
+  messageType?: string;
+  error?: string;
   timestamp: string;
   event: string;
   level: 'info' | 'warn' | 'error';

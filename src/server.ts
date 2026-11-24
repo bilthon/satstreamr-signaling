@@ -67,7 +67,15 @@ function logEvent(params: {
   role?: 'tutor' | 'viewer' | 'server';
   details?: Record<string, unknown>;
 }): void {
+  const legacyAliases: Record<string, string> = {
+    server_started: 'server_start', ws_connected: 'connection',
+    session_rejoined: 'rejoin_ack', ws_disconnected: 'disconnection',
+  };
   log({
+    messageType: legacyAliases[params.event] ??
+      (typeof params.details?.messageType === 'string' ? params.details.messageType : params.event),
+    ...(params.event === 'ws_error' && typeof params.details?.error === 'string'
+      ? { error: params.details.error } : {}),
     timestamp: new Date().toISOString(),
     event: params.event,
     level: params.level ?? 'info',
