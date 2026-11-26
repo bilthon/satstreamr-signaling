@@ -21,6 +21,11 @@ let shuttingDown = false;
 const TURN_SHARED_SECRET = process.env.TURN_SHARED_SECRET ?? '';
 const TURN_HOST = process.env.TURN_HOST ?? 'localhost';
 
+function readFreeSeconds(value: number | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return 0;
+  return Math.floor(value);
+}
+
 function buildIceServers(userId: string): IceServer[] {
   const servers: IceServer[] = [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -102,7 +107,9 @@ function buildSessionSummary(session: SessionRecord, endedAtMs: number): Record<
   const billableDurationMs = Math.max(0, endedAtMs - billingStartedAtMs);
   const rateSatsPerInterval = session.rateSatsPerInterval ?? 2;
   const intervalSeconds = session.intervalSeconds ?? 10;
-  const billableIntervalsFloat = billableDurationMs / (intervalSeconds * 1000);
+  const freeSeconds = session.freeSeconds ?? 0;
+  const chargedDurationMs = Math.max(0, billableDurationMs - freeSeconds * 1000);
+  const billableIntervalsFloat = chargedDurationMs / (intervalSeconds * 1000);
 
   return {
     createdAtMs,
@@ -111,6 +118,7 @@ function buildSessionSummary(session: SessionRecord, endedAtMs: number): Record<
     viewerPresentDurationMs: billableDurationMs,
     rateSatsPerInterval,
     intervalSeconds,
+    freeSeconds,
     estimatedSatsEarned: billableIntervalsFloat * rateSatsPerInterval,
     estimatedSatsSpent: billableIntervalsFloat * rateSatsPerInterval,
     viewerJoinCount: session.viewerJoinCount,
@@ -292,6 +300,7 @@ wss.on('connection', (ws: WebSocket) => {
         const mintUrl = message.mintUrl ?? '';
         const rateSatsPerInterval = message.rateSatsPerInterval ?? 2;
         const intervalSeconds = message.intervalSeconds ?? 10;
+        const freeSeconds = readFreeSeconds(message.freeSeconds);
         const session: SessionRecord = {
           peers: new Map([[peerId, ws]]),
           disconnectedPeers: new Set(),
@@ -301,6 +310,7 @@ wss.on('connection', (ws: WebSocket) => {
           mintUrl,
           rateSatsPerInterval,
           intervalSeconds,
+          freeSeconds,
           graceTimers: new Map(),
           peerRoles: new Map([[peerId, 'tutor']]),
           createdAtMs: Date.now(),
@@ -320,6 +330,7 @@ wss.on('connection', (ws: WebSocket) => {
           ...(mintUrl ? { mintUrl } : {}),
           rateSatsPerInterval,
           intervalSeconds,
+          freeSeconds,
         };
         sendTo(ws, tutorCreatedMsg, peerId, newSessionId);
         logEvent({
@@ -426,6 +437,7 @@ wss.on('connection', (ws: WebSocket) => {
           ...(session.mintUrl ? { mintUrl: session.mintUrl } : {}),
           rateSatsPerInterval: session.rateSatsPerInterval ?? 2,
           intervalSeconds: session.intervalSeconds ?? 10,
+          freeSeconds: session.freeSeconds ?? 0,
         };
         sendTo(ws, viewerCreatedMsg, peerId, sid);
         logEvent({
