@@ -32,6 +32,8 @@ export interface CreateSessionMessage {
   rateSatsPerInterval?: number;
   /** Payment interval in seconds — relayed to viewer in session_created. */
   intervalSeconds?: number;
+  /** Seconds of video before the first charge. Omitted or invalid means none. */
+  freeSeconds?: number;
 }
 
 export interface JoinSessionMessage {
@@ -99,6 +101,8 @@ export interface SessionCreatedMessage {
   rateSatsPerInterval?: number;
   /** Payment interval in seconds — forwarded to viewer. */
   intervalSeconds?: number;
+  /** Seconds before the first charge. Zero means the usual interval wait. */
+  freeSeconds?: number;
 }
 
 export interface ViewerJoinedMessage {
@@ -174,6 +178,7 @@ export interface SessionRecord {
   // Rate fields relayed to viewers (set from create_session)
   rateSatsPerInterval?: number;
   intervalSeconds?: number;
+  freeSeconds?: number;
   // Track grace period timers keyed by peerId
   graceTimers: Map<string, ReturnType<typeof setTimeout>>;
   // Peer roles: map peerId -> 'tutor' | 'viewer'

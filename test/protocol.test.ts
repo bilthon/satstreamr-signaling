@@ -254,11 +254,12 @@ describe('end_session', () => {
 describe('rate fields relay', () => {
   test('rate fields sent in create_session are relayed in session_created to viewer', async () => {
     const tutor = await connect();
-    send(tutor, { type: 'create_session', rateSatsPerInterval: 5, intervalSeconds: 30 });
+    send(tutor, { type: 'create_session', rateSatsPerInterval: 5, intervalSeconds: 30, freeSeconds: 90 });
     const tutorCreated = await nextMessage(tutor);
     expect(tutorCreated.type).toBe('session_created');
     expect(tutorCreated.rateSatsPerInterval).toBe(5);
     expect(tutorCreated.intervalSeconds).toBe(30);
+    expect(tutorCreated.freeSeconds).toBe(90);
     const sessionId = tutorCreated.sessionId as string;
 
     const viewer = await connect();
@@ -268,6 +269,7 @@ describe('rate fields relay', () => {
     expect(viewerCreated.type).toBe('session_created');
     expect(viewerCreated.rateSatsPerInterval).toBe(5);
     expect(viewerCreated.intervalSeconds).toBe(30);
+    expect(viewerCreated.freeSeconds).toBe(90);
 
     tutor.close();
     viewer.close();
@@ -280,6 +282,7 @@ describe('rate fields relay', () => {
     expect(tutorCreated.type).toBe('session_created');
     expect(tutorCreated.rateSatsPerInterval).toBe(2);
     expect(tutorCreated.intervalSeconds).toBe(10);
+    expect(tutorCreated.freeSeconds).toBe(0);
     const sessionId = tutorCreated.sessionId as string;
 
     const viewer = await connect();
@@ -289,6 +292,7 @@ describe('rate fields relay', () => {
     expect(viewerCreated.type).toBe('session_created');
     expect(viewerCreated.rateSatsPerInterval).toBe(2);
     expect(viewerCreated.intervalSeconds).toBe(10);
+    expect(viewerCreated.freeSeconds).toBe(0);
 
     tutor.close();
     viewer.close();
